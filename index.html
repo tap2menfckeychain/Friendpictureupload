@@ -1,0 +1,760 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cảm ơn tình bạn</title>
+
+    <!-- Cá nhân hóa: đọc ?c=<mã> (link ngắn) hoặc ?data=<chuỗi> (link dài dự phòng) -->
+    <style>
+      /* Trong lúc nạp dữ liệu thiệp: ẩn thiệp mẫu (tránh nhá ảnh của người bán) và chưa cho bấm màn hình chào */
+      html.is-loading .card-container { visibility: hidden; }
+      html.is-loading #welcome-screen { pointer-events: none; }
+    </style>
+    <script>
+      window.Card = (function () {
+        /* ====== CẤU HÌNH (phải trùng upload.html) ====== */
+        var CLOUD_NAME = "yx8ugl6f";
+
+        var RES = "https://res.cloudinary.com/" + CLOUD_NAME + "/";
+        var RAW_BASE = RES + "raw/upload/"; // file JSON chứa dữ liệu thiệp (link ngắn)
+
+        var qs = new URLSearchParams(location.search);
+        var shortId = qs.get("c");
+        var longData = qs.get("data");
+        var Card = { promise: Promise.resolve(null), RES: RES };
+        if (!shortId && !longData) return Card; // link gốc -> thiệp mẫu
+
+        var root = document.documentElement;
+        root.classList.add("is-loading");
+        setTimeout(function () { root.classList.remove("is-loading"); }, 9000); // dự phòng
+
+        function decodeData(s) {
+          var b64 = s.replace(/ /g, "+").replace(/-/g, "+").replace(/_/g, "/");
+          while (b64.length % 4) b64 += "=";
+          var bin = atob(b64);
+          var bytes = Uint8Array.from(bin, function (c) { return c.charCodeAt(0); });
+          return JSON.parse(new TextDecoder().decode(bytes));
+        }
+
+        // Link ngắn: tải file JSON từ Cloudinary (upload.html bỏ đuôi .json nên thử cả hai kiểu).
+        // Chờ tối đa 7 giây: mạng treo thì dùng thiệp mẫu chứ không để trang đứng.
+        async function loadShort(id) {
+          if (!/^(v\d+\/)?[\w\-\/\.]+$/.test(id) || id.indexOf("..") >= 0) throw new Error("Mã thiệp không hợp lệ");
+          var ctrl = new AbortController();
+          var timer = setTimeout(function () { ctrl.abort(); }, 7000);
+          var tries = [id, id + ".json"], lastErr;
+          try {
+            for (var i = 0; i < tries.length; i++) {
+              try {
+                var res = await fetch(RAW_BASE + tries[i], { cache: "no-cache", signal: ctrl.signal });
+                if (res.ok) return await res.json();
+                lastErr = new Error("HTTP " + res.status);
+              } catch (e) { lastErr = e; }
+            }
+          } finally { clearTimeout(timer); }
+          throw lastErr;
+        }
+
+        var load = shortId ? loadShort(shortId) : Promise.resolve().then(function () { return decodeData(longData); });
+        var giveUp = new Promise(function (_, reject) { setTimeout(function () { reject(new Error("Hết thời gian chờ dữ liệu thiệp")); }, 9000); });
+        Card.promise = Promise.race([load, giveUp]);
+        return Card;
+      })();
+    </script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@1,400;1,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background-color: #f2ece4;
+        font-family: "Montserrat", sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        padding: 20px 10px;
+        color: #111;
+      }
+
+      /* Màn hình chào để kích hoạt nhạc */
+      #welcome-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.75);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        cursor: pointer;
+        transition: opacity 0.5s ease;
+      }
+
+      .welcome-box {
+        background: #fff;
+        padding: 30px 40px;
+        border-radius: 12px;
+        text-align: center;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        max-width: 90%;
+      }
+
+      .welcome-box h2 {
+        font-family: "Cinzel", serif;
+        font-size: 1.2rem;
+        margin-bottom: 10px;
+        color: #801827;
+      }
+
+      .welcome-box p {
+        font-size: 0.85rem;
+        color: #555;
+      }
+
+      .card-container {
+        background-color: #ffffff;
+        width: 100%;
+        max-width: 440px;
+        position: relative;
+        display: flex;
+        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+
+      /* 1. THANH LỀ BÊN TRÁI (LEFT SIDEBAR) */
+      .left-sidebar {
+        width: 42px;
+        border-right: 1px solid #111;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: center;
+        padding: 18px 0;
+        background: #fff;
+        z-index: 10;
+      }
+
+      .top-sidebar-icons {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .menu-icon {
+        width: 16px;
+        height: 12px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        cursor: pointer;
+      }
+
+      .menu-icon span {
+        display: block;
+        width: 100%;
+        height: 1.5px;
+        background-color: #111;
+      }
+
+      .search-icon svg {
+        width: 15px;
+        height: 15px;
+        stroke: #111;
+        fill: none;
+        stroke-width: 2;
+      }
+
+      .vertical-title {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        font-size: 0.58rem;
+        letter-spacing: 2px;
+        font-weight: 500;
+        color: #222;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      /* ICON TRÁI TIM */
+      .heart-icon {
+        position: relative;
+        cursor: pointer;
+        padding: 5px;
+        transition: transform 0.2s ease;
+        animation: floatUp 2.5s ease-in-out infinite alternate;
+      }
+
+      .heart-icon svg {
+        width: 16px;
+        height: 16px;
+        stroke: #801827;
+        fill: none;
+        stroke-width: 2;
+        transition: all 0.3s ease;
+      }
+
+      .heart-icon:hover svg,
+      .heart-icon.playing svg {
+        fill: #801827;
+        transform: scale(1.15);
+      }
+
+      .heart-icon.playing {
+        animation: heartBeat 1.2s infinite alternate ease-in-out;
+      }
+
+      @keyframes floatUp {
+        0% {
+          transform: translateY(0);
+        }
+        100% {
+          transform: translateY(-8px);
+        }
+      }
+
+      @keyframes heartBeat {
+        0% {
+          transform: translateY(-6px) scale(1);
+        }
+        100% {
+          transform: translateY(-10px) scale(1.2);
+        }
+      }
+
+      /* 2. NỘI DUNG CHÍNH */
+      .main-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        background: #fff;
+      }
+
+      .dots-header {
+        padding: 12px 20px 8px 20px;
+        display: flex;
+        gap: 5px;
+      }
+
+      .dot {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        border: 1px solid #111;
+      }
+
+      .dot.filled {
+        background-color: #111;
+      }
+
+      .top-hero-image {
+        position: relative;
+        width: 100%;
+        height: 250px;
+      }
+
+      .top-hero-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .triangle-tag {
+        position: absolute;
+        bottom: 0;
+        right: 38px;
+        width: 0;
+        height: 0;
+        border-left: 32px solid transparent;
+        border-right: 32px solid transparent;
+        border-bottom: 45px solid #000;
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+      }
+
+      .triangle-text {
+        position: absolute;
+        bottom: -40px;
+        width: 60px;
+        text-align: center;
+        color: #fff;
+        font-family: "Playfair Display", serif;
+        font-size: 0.48rem;
+        font-style: italic;
+        line-height: 1.1;
+      }
+
+      .card-body {
+        padding: 20px 20px 15px 20px;
+      }
+
+      .date-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      .circle-outline {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        border: 1.5px solid #111;
+      }
+
+      .date-text {
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 1.5px;
+        color: #222;
+      }
+
+      .date-line {
+        flex: 1;
+        height: 1px;
+        background-color: #111;
+      }
+
+      .main-heading {
+        text-align: center;
+        margin: 10px 0 22px 0;
+      }
+
+      .heading-top {
+        font-family: "Montserrat", sans-serif;
+        font-weight: 700;
+        font-size: 1.45rem;
+        letter-spacing: 1px;
+        color: #000;
+        line-height: 1.1;
+      }
+
+      .heading-bottom {
+        font-family: "Cinzel", serif;
+        font-weight: 600;
+        font-size: 1.5rem;
+        letter-spacing: 2px;
+        line-height: 1.1;
+      }
+
+      .heading-bottom .my-text {
+        color: #000;
+      }
+
+      .heading-bottom .soulmate-text {
+        color: #801827;
+      }
+
+      .sub-quote-wrapper {
+        position: relative;
+        margin-bottom: 22px;
+        padding-top: 4px;
+      }
+
+      .sub-quote-line-top {
+        height: 1px;
+        background-color: #111;
+        width: 100%;
+      }
+
+      .sub-quote-text {
+        font-family: "Playfair Display", serif;
+        font-style: italic;
+        font-size: 0.68rem;
+        letter-spacing: 2px;
+        color: #444;
+        padding: 6px 0 0 10px;
+      }
+
+      .sub-quote-line-slanted {
+        position: absolute;
+        right: 25px;
+        bottom: -6px;
+        width: 1px;
+        height: 18px;
+        background-color: #111;
+        transform: rotate(-30deg);
+      }
+
+      .middle-collage {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+
+      .quote-box {
+        flex: 1;
+        position: relative;
+        padding: 10px 12px;
+      }
+
+      .quote-mark-top {
+        font-family: "Playfair Display", serif;
+        font-size: 2.2rem;
+        line-height: 1;
+        color: #000;
+        position: absolute;
+        top: -12px;
+        left: 0;
+      }
+
+      .quote-paragraph {
+        font-size: 0.5rem;
+        line-height: 1.45;
+        color: #555;
+        text-align: justify;
+        margin: 8px 0;
+      }
+
+      .quote-mark-bottom {
+        font-family: "Playfair Display", serif;
+        font-size: 2.2rem;
+        line-height: 1;
+        color: #000;
+        position: absolute;
+        bottom: -22px;
+        right: 0;
+      }
+
+      .middle-image-wrapper {
+        width: 140px;
+        height: 140px;
+        border: 3px solid #000;
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+
+      .middle-image-wrapper img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      /* 3. DẢI KHUNG ĐEN DƯỚI CÙNG */
+      .bottom-black-section {
+        background-color: #000;
+        padding: 22px 14px 18px 14px;
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        position: relative;
+      }
+
+      .mini-card {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .mini-img-box {
+        width: 100%;
+        height: 90px;
+        overflow: hidden;
+        margin-bottom: 6px;
+      }
+
+      .mini-img-box img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .mini-caption {
+        color: #fff;
+        font-size: 0.45rem;
+        letter-spacing: 0.5px;
+        opacity: 0.8;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Màn hình chào giúp kích hoạt trình phát nhạc theo chính sách trình duyệt -->
+    <div id="welcome-screen">
+      <div class="welcome-box">
+        <h2>10 Months With My Soulmate</h2>
+        <p>Bấm vào đây để mở thiệp và nghe nhạc nhé ❤️</p>
+      </div>
+    </div>
+
+    <div class="card-container">
+      <!-- 1. THANH CỘT BÊN TRÁI -->
+      <div class="left-sidebar">
+        <div class="top-sidebar-icons">
+          <div class="menu-icon">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="search-icon">
+            <svg viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </div>
+        </div>
+
+        <div class="vertical-title">Cảm ơn - Marzuz</div>
+
+        <!-- Icon trái tim nhấp nháy/bay nhẹ và bật/tắt nhạc khi click -->
+        <div class="heart-icon" id="heartMusicBtn" title="Bật/Tắt nhạc">
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
+            ></path>
+          </svg>
+        </div>
+      </div>
+
+      <!-- 2. KHU VỰC NỘI DUNG CHÍNH -->
+      <div class="main-content">
+        <div class="dots-header">
+          <div class="dot"></div>
+          <div class="dot filled"></div>
+          <div class="dot filled"></div>
+          <div class="dot"></div>
+        </div>
+
+        <div class="top-hero-image">
+          <img src="./image 5.png" alt="Our First Kiss" />
+          <div class="triangle-tag">
+            <span class="triangle-text">our<br />first kiss</span>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <div class="date-row">
+            <div class="circle-outline"></div>
+            <div class="date-text">SEPTEMBER 19, 2026</div>
+            <div class="date-line"></div>
+          </div>
+
+          <div class="main-heading">
+            <div class="heading-top">10 MONTHS WITH</div>
+            <div class="heading-bottom">
+              <span class="my-text">MY</span
+              ><span class="soulmate-text">SOULMATE</span>
+            </div>
+          </div>
+
+          <div class="sub-quote-wrapper">
+            <div class="sub-quote-line-top"></div>
+            <div class="sub-quote-text">i will always choose you</div>
+            <div class="sub-quote-line-slanted"></div>
+          </div>
+
+          <div class="middle-collage">
+            <div class="quote-box">
+              <span class="quote-mark-top">“</span>
+              <p class="quote-paragraph">
+                Có những khoảnh khắc chỉ thoáng qua, nhưng khi ở bên nhau, từng
+                phút giây đều trở thành một phần ký ức đáng nhớ. Cảm ơn vì đã
+                cùng nhau đi qua những ngày bình thường và biến chúng thành
+                những điều thật đặc biệt. Mong rằng sau này, khi nhìn lại, chúng
+                ta vẫn sẽ mỉm cười vì đã từng có một tình yêu thật đẹp.
+              </p>
+              <span class="quote-mark-bottom">”</span>
+            </div>
+
+            <div class="middle-image-wrapper">
+              <img src="./images 2.jpg" alt="Couple Moment" />
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. DẢI KHUNG ĐEN DƯỚI CÙNG -->
+        <div class="bottom-black-section">
+          <div class="mini-card">
+            <div class="mini-img-box">
+              <img src="./images 3.jpg" alt="Engaged" />
+            </div>
+            <div class="mini-caption">just engaged</div>
+          </div>
+
+          <div class="mini-card">
+            <div class="mini-img-box">
+              <img src="./image 4.jpg" alt="Serotonin" />
+            </div>
+            <div class="mini-caption">my serotonin</div>
+          </div>
+
+          <div class="mini-card">
+            <div class="mini-img-box">
+              <img src="./images 1.jpg" alt="First Date" />
+            </div>
+            <div class="mini-caption">first date (?)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FILE NHẠC NỀN -->
+    <audio id="bgMusic" loop>
+      <source
+        src="./Y2Mate.is - marzuz - cm n_ official audio.mp3"
+        type="audio/mpeg"
+      />
+    </audio>
+
+    <!-- SCRIPT: CÁ NHÂN HÓA THIỆP + NHẠC + MÀN HÌNH CHÀO -->
+    <script>
+      (async () => {
+        const $ = (sel) => document.querySelector(sel);
+        const welcomeScreen = document.getElementById("welcome-screen");
+        const heartBtn = document.getElementById("heartMusicBtn");
+        const bgMusic = document.getElementById("bgMusic");
+        const vTitle = $(".vertical-title");
+        const DEFAULT_TITLE = vTitle.textContent; // tên bài mặc định hiện ở thanh bên trái
+
+        /* ================= 1. CÁ NHÂN HÓA TỪ LINK ================= */
+        // Chữ mặc định cho thiệp của khách (khi khách không tự nhập) – không dùng chữ mẫu của người bán
+        const GENERIC = {
+          t: ["FOREVER WITH", "SOULMATE", "i will always choose you", "our moments"],
+          c: ["sweet memory", "my favorite", "best day"],
+        };
+        const MONTHS = ["JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE","JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"];
+        const PATH_RE = /^v\d+\/[\w\-\/]+\.[a-z0-9]+$/i; // dạng gọn: v1234567890/ten_file.ext
+        const IMG_BASE = Card.RES + "image/upload/f_auto,q_auto,w_900/";
+        const VIDEO_BASE = Card.RES + "video/upload/"; // nhạc cũng nằm trong nhóm "video" của Cloudinary
+
+        const text = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+        const titleCase = (s) => s.toLowerCase().replace(/(^|\s)(\S)/g, (m, a, b) => a + b.toUpperCase());
+        const toImage = (p) => {
+          if (typeof p !== "string") return null;
+          if (p.startsWith("https://res.cloudinary.com/")) return p;
+          return PATH_RE.test(p) ? IMG_BASE + p : null;
+        };
+
+        let customMusic = false;
+
+        function applyCard(d) {
+          const me = text(d.n, 40), you = text(d.n2, 40);
+          const T = Array.isArray(d.t) ? d.t : [];
+          const C = Array.isArray(d.c) ? d.c : [];
+          const t1 = text(T[0], 24) || GENERIC.t[0];
+          const t2 = text(T[1], 16) || GENERIC.t[1];
+          const t3 = text(T[2], 40) || GENERIC.t[2];
+          const t4 = text(T[3], 24) || GENERIC.t[3];
+
+          // Ảnh: 5 vị trí theo thứ tự trên thiệp (ảnh lớn, ảnh giữa, 3 ảnh nhỏ); ít ảnh thì lặp lại cho đủ
+          const imgs = (Array.isArray(d.i) ? d.i : []).map(toImage).filter(Boolean).slice(0, 5);
+          if (imgs.length) {
+            document
+              .querySelectorAll(".top-hero-image img, .middle-image-wrapper img, .mini-img-box img")
+              .forEach((img, k) => { img.src = imgs[k % imgs.length]; });
+          }
+
+          // Chữ trên thiệp
+          $(".heading-top").textContent = t1;
+          $(".soulmate-text").textContent = t2;
+          $(".sub-quote-text").textContent = t3;
+          const tri = $(".triangle-text");
+          tri.textContent = "";
+          const words = t4.split(" ");
+          tri.append(words[0]);
+          if (words.length > 1) { tri.append(document.createElement("br")); tri.append(words.slice(1).join(" ")); }
+          document.querySelectorAll(".mini-caption").forEach((el, k) => {
+            el.textContent = text(C[k], 24) || GENERIC.c[k];
+          });
+
+          // Ngày kỷ niệm (d = "YYYY-MM-DD") -> "SEPTEMBER 19, 2026"
+          const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text(d.d, 10));
+          if (m) $(".date-text").textContent = MONTHS[+m[2] - 1] + " " + +m[3] + ", " + m[1];
+
+          // Lời nhắn (kèm tên người gửi)
+          const msg = text(d.m, 400);
+          if (msg) $(".quote-paragraph").textContent = msg + (me ? " — " + me : "");
+
+          // Màn hình chào
+          $(".welcome-box h2").textContent = titleCase(t1 + " MY " + t2);
+          const who = (me ? "Từ " + me : "") + (you ? (me ? " gửi " : "Gửi ") + you : "");
+          $(".welcome-box p").textContent = (who ? who + " — bấm" : "Bấm") + " vào đây để mở thiệp và nghe nhạc nhé ❤️";
+
+          // Nhạc: khách có tải thì dùng, không thì giữ bài mặc định
+          if (typeof d.a === "string" && PATH_RE.test(d.a)) {
+            const ext = d.a.split(".").pop().toLowerCase();
+            // mp3 / m4a / aac phát được trên mọi điện thoại; định dạng khác (wav, ogg, flac...) -> Cloudinary đổi sang mp3
+            bgMusic.src = /^(mp3|m4a|aac)$/.test(ext)
+              ? VIDEO_BASE + d.a
+              : VIDEO_BASE + "f_mp3/" + d.a.replace(/\.[^.]+$/, ".mp3");
+            bgMusic.preload = "metadata"; // kiểm tra sớm: lỗi thì còn kịp chuyển về nhạc mặc định
+            bgMusic.load();
+            vTitle.textContent = text(d.s, 40) || "Bài hát của chúng mình";
+            customMusic = true;
+          }
+        }
+
+        try {
+          const card = await Card.promise;
+          if (card) applyCard(card);
+        } catch (err) {
+          console.error("Không đọc được dữ liệu thiệp, dùng nội dung mẫu:", err);
+        } finally {
+          document.documentElement.classList.remove("is-loading");
+        }
+
+        /* ================= 2. NHẠC ================= */
+        let wantPlay = false; // người xem đang muốn nghe nhạc (đã mở thiệp và chưa tự tắt)
+
+        function playMusic() {
+          wantPlay = true;
+          const p = bgMusic.play();
+          if (p && p.then) {
+            p.then(() => heartBtn.classList.add("playing")).catch((e) => {
+              console.log("Lỗi phát nhạc:", e);
+              heartBtn.classList.remove("playing");
+            });
+          }
+        }
+
+        // Nhạc riêng của khách không tải / không phát được -> tự chuyển về nhạc mặc định
+        bgMusic.addEventListener("error", () => {
+          if (!customMusic) return;
+          customMusic = false;
+          bgMusic.removeAttribute("src"); // bỏ src để trình duyệt dùng lại <source> mặc định
+          bgMusic.preload = "auto";
+          bgMusic.load();
+          vTitle.textContent = DEFAULT_TITLE;
+          if (wantPlay) playMusic();
+        });
+
+        // Bấm màn hình chào: mở thiệp và bật nhạc (bấm là phát ngay trong cú chạm để trình duyệt cho phép)
+        if (welcomeScreen && bgMusic) {
+          welcomeScreen.addEventListener("click", () => {
+            playMusic();
+            welcomeScreen.style.opacity = "0";
+            setTimeout(() => { welcomeScreen.style.display = "none"; }, 500);
+          });
+        }
+
+        // Bật/tắt nhạc khi bấm trái tim ở thanh bên trái
+        if (heartBtn && bgMusic) {
+          heartBtn.addEventListener("click", () => {
+            if (bgMusic.paused) {
+              playMusic();
+            } else {
+              wantPlay = false;
+              bgMusic.pause();
+              heartBtn.classList.remove("playing");
+            }
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>
